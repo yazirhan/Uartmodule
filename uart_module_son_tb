@@ -1,234 +1,236 @@
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.STD_LOGIC_ARITH.ALL;
 use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
-
 entity uart_module_son_tb is
-
 end uart_module_son_tb;
 
 architecture Behavioral of uart_module_son_tb is
     component uart_module_son is
-
     Port( 
           -- Tx signals
-		  tx_data 		: in  STD_LOGIC_VECTOR (7 downto 0);
-		  tx_data_wr 	: in  STD_LOGIC;
-		  tx_busy 		: out STD_LOGIC;
-		  
-		  -- Rx signals
-		  rx_data 		: out STD_LOGIC_VECTOR (7 downto 0);
-		  rx_data_rdy 	: out STD_LOGIC;
-		  
-		  -- UART
-		  uart_tx		: out STD_LOGIC;
-		  uart_rx		: in  STD_LOGIC;
-		  
-		  -- Logics
-		  rst 			: in  STD_LOGIC;
-		  clk 			: in  STD_LOGIC
-		  );
+          tx_data       : in  STD_LOGIC_VECTOR (7 downto 0);
+          tx_data_wr    : in  STD_LOGIC;
+          tx_busy       : out STD_LOGIC;
+          
+          -- Rx signals
+          rx_data       : out STD_LOGIC_VECTOR (7 downto 0);
+          rx_data_rdy   : out STD_LOGIC;
+          
+          -- UART Physical Pins
+          uart_tx       : out STD_LOGIC;
+          uart_rx       : in  STD_LOGIC;
+          
+          -- System Logics
+          rst           : in  STD_LOGIC;
+          clk           : in  STD_LOGIC
+          );
     end component;
     
-    -- Rx signals
-    signal rx_data : STD_LOGIC_VECTOR (7 downto 0):= X"00";	  
+    -- Rx internal signals
+    signal rx_data     : STD_LOGIC_VECTOR (7 downto 0):= X"00";      
     signal rx_data_rdy : STD_LOGIC := '0';
     
-    -- Constant time rx
-    constant   cycle       :   time := 10ns  ; 
-    constant   baud9600    :   time := 104.16us ;
-    constant   baud115_200 :   time := 8.68us ;
-    constant   baud10_560  :   time := 94.69us ;
-    constant   baud10_080  :   time := 99.2us;
+    -- Timing constants
+    constant   cycle       :   time := 10ns; 
+    constant   baud9600    :   time := 104.16us;
+    constant   baud115_200 :   time := 8.68us;
+    constant   baud10_560  :   time := 94.69us; -- 9600 + 10% error
+    constant   baud10_080  :   time := 99.2us;  -- 9600 + 5% error
     
-    -- Constant hex rx 
-    constant   c_hex4b0  : std_logic_vector(9 downto 0) := '0' & X"4b" & '0';
-    constant   c_hex4b1  : std_logic_vector(9 downto 0) := '1' & X"4b" & '0';
-    constant   c_hex4e  : std_logic_vector(9 downto 0) := '1' & X"4e" & '0';
-    constant   c_hexaa  : std_logic_vector(9 downto 0) := '1' & X"aa" & '0';
-    constant   c_hex6c  : std_logic_vector(9 downto 0) := '1' & X"6c" & '0';
+    -- Test data constants (including Start and Stop bits)
+    constant   c_hex4b0  : std_logic_vector(9 downto 0) := '0' & X"4b" & '0'; -- Data 4B with missing stop bit
+    constant   c_hex4b1  : std_logic_vector(9 downto 0) := '1' & X"4b" & '0'; -- Data 4B with valid stop bit
+    constant   c_hex4e   : std_logic_vector(9 downto 0) := '1' & X"4e" & '0';
+    constant   c_hexaa   : std_logic_vector(9 downto 0) := '1' & X"aa" & '0';
+    constant   c_hex6c   : std_logic_vector(9 downto 0) := '1' & X"6c" & '0';
     
-    -- Tx signals
-    signal tx_data    : STD_LOGIC_VECTOR (7 downto 0):= X"00"; 		  
-    signal tx_data_wr : STD_LOGIC  := '0';		  
+    -- Tx internal signals
+    signal tx_data    : STD_LOGIC_VECTOR (7 downto 0):= X"00";          
+    signal tx_data_wr : STD_LOGIC  := '0';          
     signal tx_busy    : STD_LOGIC;
     
-    -- UART
+    -- UART internal signals
     signal uart_tx    : STD_LOGIC;
-    signal uart_rx :    STD_LOGIC;
-    		
-    -- Logics
+    signal uart_rx    : STD_LOGIC;
+            
+    -- System Logic internal signals
     signal rst        : STD_LOGIC  := '0';
-    signal clk	      : std_logic  := '1';
+    signal clk        : std_logic  := '1';
     
 begin
     
-     UUT: uart_module_son port map (
+    -- Unit Under Test (UUT) Instance
+    UUT: uart_module_son port map (
+        rx_data     => rx_data,
+        rx_data_rdy => rx_data_rdy,
+        uart_rx     => uart_rx,
+        tx_data     => tx_data,   
+        tx_data_wr  => tx_data_wr,
+        tx_busy     => tx_busy, 
+        uart_tx     => uart_tx,
+        rst         => rst, 
+        clk         => clk
+    );
         
-        rx_data     =>  rx_data,
-        rx_data_rdy =>  rx_data_rdy,
-        uart_rx     =>  uart_rx,
-        tx_data     =>  tx_data,   
-        tx_data_wr  =>  tx_data_wr,
-        tx_busy     =>  tx_busy, 
-        uart_tx     =>  uart_tx,
-        rst         =>  rst, 
-        clk	        =>  clk);
-        
-        clk <= not clk after cycle/2;
+    -- Clock Generation Process
+    clk <= not clk after cycle/2;
      
-Uart:   process 
-        begin
+    Uart_Sim: process 
+    begin
               
-            -- Uart Rx
-             
-            -- 1 geldiginde sabit kalma durumu 
-            wait for 10*cycle;
-            rst <= '1';
-            wait for cycle;
-            rst <= '0';
-            wait for cycle;
-            uart_rx <= '1';
+        -- Initial State / UART Rx Testing
+         
+        -- Idle state with logic '1'
+        wait for 10*cycle;
+        rst <= '1';
+        wait for cycle;
+        rst <= '0';
+        wait for cycle;
+        uart_rx <= '1';
+        wait for baud9600;
+        uart_rx <= '1';
+        wait for baud9600;
+        
+        -- Sending data without a valid stop bit
+        for i in 0 to 9 loop
+            uart_rx <= c_hex4b0(i);
             wait for baud9600;
-            uart_rx <= '1';
-            wait for baud9600;
-            
-            -- stop biti olmayan data gonderme
-            for i in 0 to 9 loop
-                uart_rx <= c_hex4b0(i);
-                wait for baud9600;
-            end loop; 
+        end loop; 
                
-            -- art arda 2 farkl  data yollama   
-            for i in 0 to 9 loop
-                uart_rx <= c_hex4b1(i);
-                wait for baud9600;
-            end loop; 
-           
-                wait for cycle;
-            
-            for i in 0 to 9 loop
-                uart_rx <= c_hex4e(i);
-                wait for baud9600;
-            end loop; 
-           
-            -- reset islemi
-            rst <= '1';
-            wait for cycle;
-            rst <= '0';
-            wait for cycle;
-        
-            -- data g nderilip  sonras nda lojik 1 gonderildiginde sabit kalma durumu
-            for i in 0 to 9 loop
-                uart_rx <= c_hexaa(i);
-                wait for baud9600;
-            end loop;    
-            uart_rx <= '1';
+        -- Sending two different data packets sequentially
+        for i in 0 to 9 loop
+            uart_rx <= c_hex4b1(i);
             wait for baud9600;
+        end loop; 
+            
+        wait for cycle;
         
-            -- farkl  baudrate ile data g nderilmesi
-            for i in 0 to 9 loop
-                uart_rx <= c_hex6c(i);
-                wait for baud115_200;
-            end loop;    
+        for i in 0 to 9 loop
+            uart_rx <= c_hex4e(i);
+            wait for baud9600;
+        end loop; 
+           
+        -- Reset operation
+        rst <= '1';
+        wait for cycle;
+        rst <= '0';
+        wait for cycle;
+        
+        -- Send data then hold idle (Logic 1) state
+        for i in 0 to 9 loop
+            uart_rx <= c_hexaa(i);
+            wait for baud9600;
+        end loop;    
+        uart_rx <= '1';
+        wait for baud9600;
+        
+        -- Sending data at a different baud rate (115200)
+        for i in 0 to 9 loop
+            uart_rx <= c_hex6c(i);
+            wait for baud115_200;
+        end loop;    
                
-            -- reset islemi
-            rst <= '1';
-            wait for cycle;
-            rst <= '0';
-            wait for cycle;
+        -- Reset operation
+        rst <= '1';
+        wait for cycle;
+        rst <= '0';
+        wait for cycle;
         
-            -- 9600 baudratenin %10 fazlas  bir baudrate ile data g nderilmesi
-            for i in 0 to 9 loop
-                uart_rx <= c_hex6c(i);
-                wait for baud10_560;
-                end loop;    
+        -- Sending data with 10% baud rate deviation from 9600
+        for i in 0 to 9 loop
+            uart_rx <= c_hex6c(i);
+            wait for baud10_560;
+        end loop;    
  
-            -- reset islemi
-            rst <= '1';
-            wait for cycle;
-            rst <= '0';
-            wait for cycle;
+        -- Reset operation
+        rst <= '1';
+        wait for cycle;
+        rst <= '0';
+        wait for cycle;
         
-            -- 9600 baudratenin %5 fazlas  bir baudrate ile data g nderilmesi
-            for i in 0 to 9 loop
-                uart_rx <= c_hex6c(i);
-                wait for baud10_080;
-            end loop;
-             -- Reset Uart_TX 
-            wait for 10*cycle;
-            rst <= '1';
-            wait for cycle;
-            rst <= '0';
-            wait for 10*cycle;
+        -- Sending data with 5% baud rate deviation from 9600
+        for i in 0 to 9 loop
+            uart_rx <= c_hex6c(i);
+            wait for baud10_080;
+        end loop;
+
+        -- UART TX Section Testing
         
-            -- Art arda 2 data iletimi
-            tx_data <= X"55";
-            wait for cycle;
-            tx_data_wr <= '1';
-            wait for cycle;
-            tx_data_wr <= '0';
-            wait until tx_busy = '0';
-            tx_data <= X"6C";
-            wait for 1*cycle;
-            tx_data_wr <= '1';
-            wait for cycle;
-            tx_data_wr <= '0';
-            wait until tx_busy = '0';
+        -- Initial Reset for TX
+        wait for 10*cycle;
+        rst <= '1';
+        wait for cycle;
+        rst <= '0';
+        wait for 10*cycle;
         
-            -- Data g nderilmeye basladiktan sonra yeni data atanmas  (abnin g nderilmesi laz m)
-            tx_data <= X"ab";
-            wait for cycle;
-            tx_data_wr <= '1';
-            wait for cycle;
-            tx_data_wr <= '0';
-            wait for cycle;
-            tx_data <= X"36";
-            wait for cycle;
-            tx_data_wr <= '1';
-            wait for cycle;
-            tx_data_wr <= '0';
-            wait until tx_busy = '0';
+        -- Transmitting two data packets sequentially
+        tx_data <= X"55";
+        wait for cycle;
+        tx_data_wr <= '1';
+        wait for cycle;
+        tx_data_wr <= '0';
+        wait until tx_busy = '0';
         
-            -- ab gonderildikten sonra onceden atanan X"36" datas n n gonderimi
-            tx_data_wr <= '1';
-            wait for cycle;
-            tx_data_wr <= '0';
-            wait until tx_busy = '0';
+        tx_data <= X"6C";
+        wait for 1*cycle;
+        tx_data_wr <= '1';
+        wait for cycle;
+        tx_data_wr <= '0';
+        wait until tx_busy = '0';
         
-            -- Reset UUT 
-            wait for 10*cycle;
-            rst <= '1';
-            wait for cycle;
-            rst <= '0';
-            wait for 10*cycle;
+        -- Assigning new data while a transmission is starting (X"ab" should be sent)
+        tx_data <= X"ab";
+        wait for cycle;
+        tx_data_wr <= '1';
+        wait for cycle;
+        tx_data_wr <= '0';
+        wait for cycle;
+        tx_data <= X"36";
+        wait for cycle;
+        tx_data_wr <= '1';
+        wait for cycle;
+        tx_data_wr <= '0';
+        wait until tx_busy = '0';
         
-            -- Data gonderilirken reset
-            tx_data <= X"55";
-            wait for cycle;
-            tx_data_wr <= '1';
-            wait for cycle;
-            tx_data_wr <= '0';
-            wait for 400us;
+        -- Transmitting the previously assigned X"36" data after X"ab" is finished
+        tx_data_wr <= '1';
+        wait for cycle;
+        tx_data_wr <= '0';
+        wait until tx_busy = '0';
         
-            -- Reset UUT 
-            wait for 10*cycle;
-            rst <= '1';
-            wait for cycle;
-            rst <= '0';
-            wait for 10*cycle;
+        -- UUT Reset sequence
+        wait for 10*cycle;
+        rst <= '1';
+        wait for cycle;
+        rst <= '0';
+        wait for 10*cycle;
         
-            --Resetten sonra farkli data gonderilmesi
-            tx_data <= X"ac";
-            wait for cycle;
-            tx_data_wr <= '1';
-            wait for cycle;
-            tx_data_wr <= '0';
+        -- Resetting mid-transmission
+        tx_data <= X"55";
+        wait for cycle;
+        tx_data_wr <= '1';
+        wait for cycle;
+        tx_data_wr <= '0';
+        wait for 400us; -- Wait during transmission
         
-        wait;   
-        end process;    	            
-               
+        -- Reset UUT
+        wait for 10*cycle;
+        rst <= '1';
+        wait for cycle;
+        rst <= '0';
+        wait for 10*cycle;
+        
+        -- Transmitting different data after reset
+        tx_data <= X"ac";
+        wait for cycle;
+        tx_data_wr <= '1';
+        wait for cycle;
+        tx_data_wr <= '0';
+        
+        wait; -- End of simulation
+    end process; 
+                   
 end Behavioral;
-
-
